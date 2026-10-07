@@ -1,0 +1,15 @@
+# Gitleaks secret-scanning config (DevSecOps stage)
+# Uses all default rules, but skips dependency and build folders.
+title = "QuickBite gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore third-party and generated files"
+paths = [
+  '''node_modules''',
+  '''coverage''',
+  '''target''',
+  '''package-lock\.json''',
+]

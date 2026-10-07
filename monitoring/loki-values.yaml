@@ -1,0 +1,15 @@
+# Helm values for grafana/loki-stack (centralized logging: Promtail -> Loki -> Grafana)
+# The "ELK or similar" option from the syllabus:
+#   Promtail  ~ Logstash/Beats (collects container logs on every node)
+#   Loki      ~ Elasticsearch  (stores and indexes logs)
+#   Grafana   ~ Kibana         (search and visualize logs)
+loki:
+  enabled: true
+  # IMPORTANT: Prometheus is the default datasource in Grafana; two defaults crash Grafana
+  isDefault: false
+promtail:
+  enabled: true
+grafana:
+  enabled: false        # we reuse the Grafana from kube-prometheus-stack
+prometheus:
+  enabled: false

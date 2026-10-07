@@ -1,0 +1,19 @@
+# Tells Prometheus to scrape QuickBite's /metrics endpoint every 15s.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: quickbite
+  namespace: quickbite
+  labels:
+    app: quickbite
+spec:
+  selector:
+    matchLabels:
+      app: quickbite
+  namespaceSelector:
+    matchNames: [quickbite]
+  podTargetLabels: [track]       # adds track="stable"/"canary" to every metric
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

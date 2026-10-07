@@ -1,0 +1,51 @@
+# ---------- Deployment strategy demo: CANARY release ----------
+# One pod running the NEW version alongside the stable pods.
+# The Service selects app=quickbite, so ~1/(stable+1) of traffic hits the canary.
+# Watch error rate / latency for track="canary" in Grafana; then either
+#   promote:  kubectl -n quickbite set image deploy/quickbite quickbite=<new image>
+#             kubectl -n quickbite delete -f k8s/canary-deployment.yaml
+#   abort:    kubectl -n quickbite delete -f k8s/canary-deployment.yaml
+# Usage: sed "s|CANARY_IMAGE|quickbite:1.0.N|" k8s/canary-deployment.yaml | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quickbite-canary
+  namespace: quickbite
+  labels:
+    app: quickbite
+    track: canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: quickbite
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: quickbite
+        track: canary
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: quickbite
+          image: CANARY_IMAGE
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: quickbite-config
+          resources:
+            requests: { cpu: 100m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }

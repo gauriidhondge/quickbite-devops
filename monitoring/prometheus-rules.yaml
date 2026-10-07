@@ -1,0 +1,91 @@
+# SRE rules for QuickBite
+#  - Recording rules turn raw metrics into SLIs
+#  - Alerting rules fire when SLOs are threatened
+# SLOs (see sre/SLO.md):
+#  - Availability: 99.5% of API requests succeed (non-5xx)
+#  - Latency:      95th percentile of POST /api/orders < 300 ms
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: quickbite-slo-rules
+  namespace: quickbite
+  labels:
+    app: quickbite
+spec:
+  groups:
+    - name: quickbite.sli
+      interval: 15s
+      rules:
+        # Error ratio (5xx / total) over the last 5 minutes, API routes only
+        - record: quickbite:error_ratio:rate5m
+          expr: |
+            sum(rate(http_requests_total{namespace="quickbite", route=~"/api/.*", status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total{namespace="quickbite", route=~"/api/.*"}[5m])), 1e-9)
+
+        - record: quickbite:error_ratio:rate1h
+          expr: |
+            sum(rate(http_requests_total{namespace="quickbite", route=~"/api/.*", status_code=~"5.."}[1h]))
+            /
+            clamp_min(sum(rate(http_requests_total{namespace="quickbite", route=~"/api/.*"}[1h])), 1e-9)
+
+        # Availability SLI
+        - record: quickbite:availability:rate5m
+          expr: 1 - quickbite:error_ratio:rate5m
+
+        # p95 latency of order placement
+        - record: quickbite:order_latency_p95:rate5m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_request_duration_seconds_bucket{namespace="quickbite", route="/api/orders", method="POST"}[5m])))
+
+    - name: quickbite.alerts
+      rules:
+        - alert: QuickBiteDown
+          expr: absent(up{namespace="quickbite", job="quickbite"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+            team: canteen-sre
+          annotations:
+            summary: "QuickBite has no healthy pods being scraped"
+            description: "Prometheus cannot scrape any QuickBite pod for 1 minute."
+            runbook: "sre/runbook.md#quickbitedown"
+
+        - alert: QuickBiteHighErrorRate
+          expr: quickbite:error_ratio:rate5m > 0.02
+          for: 2m
+          labels:
+            severity: critical
+            team: canteen-sre
+          annotations:
+            summary: "Order API error rate above 2%"
+            description: "Error ratio is {{ $value | humanizePercentage }} (SLO allows 0.5%)."
+            runbook: "sre/runbook.md#quickbitehigherrorrate"
+
+        - alert: QuickBiteHighLatency
+          expr: quickbite:order_latency_p95:rate5m > 0.3
+          for: 2m
+          labels:
+            severity: warning
+            team: canteen-sre
+          annotations:
+            summary: "p95 order latency above 300 ms SLO"
+            description: "p95 latency of POST /api/orders is {{ $value | humanizeDuration }}."
+            runbook: "sre/runbook.md#quickbitehighlatency"
+
+        # Multi-window error-budget burn alert (Google SRE workbook style).
+        # Burn rate 14.4 = whole 30-day budget gone in ~2 days.
+        - alert: QuickBiteErrorBudgetFastBurn
+          expr: |
+            quickbite:error_ratio:rate5m > (14.4 * 0.005)
+            and
+            quickbite:error_ratio:rate1h > (14.4 * 0.005)
+          for: 1m
+          labels:
+            severity: critical
+            team: canteen-sre
+          annotations:
+            summary: "Error budget burning 14x faster than allowed"
+            description: "At this rate the monthly 0.5% error budget will be exhausted in about 2 days."
+            runbook: "sre/runbook.md#quickbiteerrorbudgetfastburn"

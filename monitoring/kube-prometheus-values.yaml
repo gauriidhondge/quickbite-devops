@@ -1,0 +1,42 @@
+# Helm values for prometheus-community/kube-prometheus-stack
+# Installs: Prometheus Operator, Prometheus, Alertmanager, Grafana,
+#           node-exporter, kube-state-metrics.
+# Tuned to be light enough for Minikube on a laptop.
+
+prometheus:
+  prometheusSpec:
+    # Pick up ServiceMonitors / PrometheusRules from ANY namespace (not only Helm-labelled ones)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 2d
+    resources:
+      requests: { cpu: 200m, memory: 400Mi }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+
+grafana:
+  adminPassword: quickbite123
+  defaultDashboardsTimezone: Asia/Kolkata
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL        # load our QuickBite dashboard ConfigMap
+    datasources:
+      enabled: true               # picks up the Loki datasource created by loki-stack
+
+# Components that don't work (or aren't needed) on Minikube
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false

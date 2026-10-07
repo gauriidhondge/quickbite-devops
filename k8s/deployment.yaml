@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quickbite
+  namespace: quickbite
+  labels:
+    app: quickbite
+spec:
+  replicas: 2
+  revisionHistoryLimit: 10          # keep old ReplicaSets so we can roll back
+  selector:
+    matchLabels:
+      app: quickbite
+  # ---------- Deployment strategy: Rolling Update (zero downtime) ----------
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1                   # create 1 extra new pod at a time
+      maxUnavailable: 0             # never drop below desired capacity
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        app: quickbite
+        track: stable
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: quickbite
+          image: quickbite:latest   # Jenkins replaces this with quickbite:1.0.<BUILD_NUMBER>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: quickbite-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:           # pod gets traffic only when ready
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:            # restart the container if it hangs
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
